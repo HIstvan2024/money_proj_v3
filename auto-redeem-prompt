@@ -1,0 +1,75 @@
+Read /docker/money_proj_v3/CLAUDE.md for project context.
+Read /docker/money_proj_v3/src/integrations/polymarket.py for the existing client.
+Read /docker/money_proj_v3/src/agents/ceo.py for the CEO decision engine.
+Read /docker/money_proj_v3/src/agents/cpo.py for the portfolio monitor.
+Read /docker/money_proj_v3/src/integrations/telegram.py for notifications.
+
+TASK: Build auto-redemption pipeline for resolved Polymarket positions.
+
+FLOW:
+1. CPO detects resolved positions on each cycle
+2. CPO publishes to cpo/alerts with type "redeemable"
+3. CEO receives the alert, approves redemption
+4. CEO executes redemption via PolymarketClient
+5. Telegram notifies admin at each step
+
+STEP 1 — CPO: Add resolved position detection to on_cycle():
+- Query the CTF contract for redeemable balances (use the method you just built)
+- Also check Polymarket API for positions where market.resolved == true
+- For each redeemable position, publish to cpo/alerts:
+  ```json
+  {
+    "alert_type": "redeemable",
+    "market_id": "...",
+    "condition_id": "...",
+    "token_id": "...",
+    "question": "...",
+    "redeemable_amount": 1.0,
+    "outcome": "Yes",
+    "timestamp": "..."
+  }
+  ```
+- Notify Telegram: "💰 Redeemable position found: [market question] — $X claimable"
+
+STEP 2 — CEO: Handle redeemable alerts in on_message():
+- Listen for cpo/alerts where alert_type == "redeemable"
+- Auto-approve redemptions (no LLM needed — free money, always redeem)
+- Execute: call self.ctx["polymarket"].redeem_position(condition_id)
+- Use proxy rotation for the on-chain transaction
+- Publish to ceo/decisions:
+  ```json
+  {
+    "action": "redeem",
+    "market_id": "...",
+    "amount": 1.0,
+    "status": "success|failed",
+    "tx_hash": "0x...",
+    "reasoning": "Auto-redeem resolved position"
+  }
+  ```
+- Notify Telegram:
+  - On success: "✅ Redeemed $X from [market]. TX: [hash]"
+  - On failure: "❌ Redemption failed for [market]: [error]"
+
+STEP 3 — PolymarketClient: Make sure redeem_position() exists and works.
+If you already built it during the previous investigation, verify it:
+- Takes condition_id (or whatever identifier is needed)
+- Signs and sends the on-chain transaction via POLY_RPC_URL
+- Uses proxy rotation
+- Returns tx_hash and status
+
+STEP 4 — Telegram: Add /redeem command
+- Manual trigger: lists all redeemable positions and redeems them
+- Useful as backup if auto-redeem misses something
+- Shows: market name, claimable amount, tx status
+
+STEP 5 — Frequency:
+- CPO checks for redeemable positions every cycle (30 min)
+- CEO processes redemption alerts immediately (no delay)
+- This means resolved positions get claimed within 30 minutes max
+
+AFTER BUILDING:
+1. Test imports for all changed files
+2. Restart: docker compose restart orchestrator
+3. Check logs: docker logs agent-orchestrator 2>&1 | grep -i "redeem"
+4. List all files changed
