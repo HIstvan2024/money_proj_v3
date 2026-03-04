@@ -1,0 +1,23 @@
+# ── Core Runtime ────────────────────────────────────────────
+aiohttp==3.9.5              # Async HTTP client/server (webhook + Binance WS)
+redis[hiredis]==5.0.7        # Redis client with C parser
+apscheduler==3.10.4          # In-process scheduler (backup to n8n triggers)
+
+# ── AI / LLM ───────────────────────────────────────────────
+anthropic==0.39.0            # Claude API (if agents need LLM reasoning)
+openai==1.51.0               # Grok API (xAI uses OpenAI-compatible endpoint)
+
+# ── Polymarket / Web3 ──────────────────────────────────────
+py-clob-client==0.1.4        # Polymarket CLOB client
+web3==7.2.0                  # Ethereum interactions
+python-dotenv==1.0.1         # .env loading
+
+# ── Data & Utilities ───────────────────────────────────────
+pydantic==2.9.2              # Data validation for agent messages
+pydantic-settings==2.5.2     # Settings from .env
+orjson==3.10.7               # Fast JSON serialization
+structlog==24.4.0            # Structured logging
+
+# ── Dev / Testing ──────────────────────────────────────────
+pytest==8.3.3
+pytest-asyncio==0.24.0

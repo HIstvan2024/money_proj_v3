@@ -1,0 +1,107 @@
+# ============================================================
+# AI Agent Infrastructure — Polymarket Trading Stack
+# Joins existing n8n_default network to reach Redis + n8n
+#
+# Start with:
+#   source .secrets && docker compose up -d
+# Or pass vars inline:
+#   docker compose run -e ANTHROPIC_API_KEY=xxx -e POLY_API_KEY=xxx ...
+# ============================================================
+
+services:
+
+  # ── Orchestrator ──────────────────────────────────────────
+  # Runs all agent roles (CEO, CIO, CSO, CPO, CDO, Assistant)
+  # as async coroutines in a single process.
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: agent-orchestrator
+    restart: unless-stopped
+    environment:
+      # Infrastructure
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - N8N_WEBHOOK_URL=http://n8n-n8n-1:5678
+      - ANALYSIS_INTERVAL_MINUTES=30
+      - LOG_LEVEL=INFO
+      # AI Services
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
+      - XAI_BASE_URL=${XAI_BASE_URL:-https://api.x.ai/v1}
+      - ELFA_API_KEY=${ELFA_API_KEY}
+      # Polymarket
+      - POLY_WALLET_PRIVATE_KEY=${POLY_WALLET_PRIVATE_KEY}
+      - POLY_WALLET_ADDRESS=${POLY_WALLET_ADDRESS}
+      - POLY_CHAIN_ID=${POLY_CHAIN_ID:-137}
+      - POLY_PROXY_URL=${POLY_PROXY_URL}
+      - POLY_RPC_URL=${POLY_RPC_URL}
+      # OpenRouter (optional — LLM routing fallback)
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # Telegram
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_ADMIN_CHAT_ID=${TG_ADMIN_CHAT_ID}
+      # Charts
+      - CHART_PAIRS=${CHART_PAIRS:-BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT}
+      - CHART_INTERVALS=${CHART_INTERVALS:-15m,1h}
+    volumes:
+      - agent-data:/app/data
+    networks:
+      - agent-internal
+      - n8n_default
+    ports:
+      - "127.0.0.1:8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Claude Code Dev Container ─────────────────────────────
+  claude-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-dev
+    container_name: claude-dev
+    restart: unless-stopped
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - agent-data:/workspace/data
+    networks:
+      - agent-internal
+      - n8n_default
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+
+volumes:
+  agent-data:
+    driver: local
+
+networks:
+  agent-internal:
+    driver: bridge
+  n8n_default:
+    external: true

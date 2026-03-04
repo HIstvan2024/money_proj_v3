@@ -1,0 +1,60 @@
+# ── Claude Code Dev Container ───────────────────────────────
+# Ubuntu 24.04 base — heavier but has everything you need
+# for interactive development with Claude Code CLI.
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System essentials + Python + Node.js (for Claude Code CLI)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    vim \
+    nano \
+    jq \
+    htop \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
+    ca-certificates \
+    gnupg \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 LTS (required for Claude Code)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Install Python deps (same as orchestrator so you can test locally)
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --break-system-packages -r /tmp/requirements.txt
+
+# Create workspace
+WORKDIR /workspace
+
+# Copy source code into image
+COPY src/ /workspace/src/
+COPY skills/ /workspace/skills/
+COPY tests/ /workspace/tests/
+COPY CLAUDE.md /workspace/CLAUDE.md
+COPY README.md /workspace/README.md
+COPY requirements.txt /workspace/requirements.txt
+
+# Create a non-root dev user with sudo access
+RUN useradd -m -s /bin/bash dev \
+    && echo "dev ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Set up Claude Code config directory and give dev ownership of workspace
+RUN mkdir -p /home/dev/.claude && chown -R dev:dev /home/dev /workspace
+
+USER dev
+
+# Shell prompt showing you're in the dev container
+RUN echo 'export PS1="🤖 \[\e[36m\]agent-dev\[\e[0m\]:\w\$ "' >> /home/dev/.bashrc
+
+CMD ["/bin/bash"]
